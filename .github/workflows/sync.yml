@@ -1,9 +1,9 @@
 name: Upstream Sync (PR)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # 允许手动触发
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 3 * * *"   # 每天凌晨 3 点同步
 
 permissions:
   contents: write
@@ -24,26 +24,28 @@ jobs:
           git remote remove upstream || true
           git remote add upstream https://github.com/samqin123/MoonTV.git
           git fetch upstream --prune
-          # 自动识别上游默认分支
+          
+          # 自动识别上游默认分支（main / master）
           if git show-ref --verify --quiet refs/remotes/upstream/main; then UPBR=main;
           elif git show-ref --verify --quiet refs/remotes/upstream/master; then UPBR=master;
           else echo "Upstream has neither main nor master"; exit 1; fi
           echo "Using upstream branch: $UPBR"
+          
           git checkout -B sync/upstream
           git reset --hard "upstream/$UPBR"
 
-      # ★ 新增：第一次先把分支推到远端，让后面的 Action 有目标可用
+      # 新增：首次推送分支到远端，避免推送失败
       - name: Push sync branch to origin
         run: |
           set -euxo pipefail
-          git push -u origin sync/upstream --force
+          git push -u origin sync/upstream --force --no-verify
 
       - name: Open PR to main
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}   # 显式使用写权限 token
-          branch: sync/upstream                # 刚才推到远端的分支
-          base: main                           # 如果你的默认分支不是 main，就改这里
+          branch: sync/upstream                # 推送的分支
+          base: main                           # 如果你的默认分支不是 main，改这里
           title: "chore: sync with upstream"
           body: "Automated sync from upstream."
-          delete-branch: true
+          delete-branch: true                  # 合并后删临时分支
