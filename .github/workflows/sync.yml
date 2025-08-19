@@ -24,26 +24,26 @@ jobs:
           git remote remove upstream || true
           git remote add upstream https://github.com/samqin123/MoonTV.git
           git fetch upstream --prune
-
-          # 自动识别上游默认分支（main / master）
-          if git show-ref --verify --quiet refs/remotes/upstream/main; then
-            UPBR=main
-          elif git show-ref --verify --quiet refs/remotes/upstream/master; then
-            UPBR=master
-          else
-            echo "ERROR: upstream has neither main nor master"; exit 1
-          fi
+          # 自动识别上游默认分支
+          if git show-ref --verify --quiet refs/remotes/upstream/main; then UPBR=main;
+          elif git show-ref --verify --quiet refs/remotes/upstream/master; then UPBR=master;
+          else echo "Upstream has neither main nor master"; exit 1; fi
           echo "Using upstream branch: $UPBR"
-
           git checkout -B sync/upstream
           git reset --hard "upstream/$UPBR"
+
+      # ★ 新增：第一次先把分支推到远端，让后面的 Action 有目标可用
+      - name: Push sync branch to origin
+        run: |
+          set -euxo pipefail
+          git push -u origin sync/upstream --force
 
       - name: Open PR to main
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}   # 显式用写权限 token
-          branch: sync/upstream                # 临时分支名
-          base: main                           # 你的默认分支
+          token: ${{ secrets.GITHUB_TOKEN }}   # 显式使用写权限 token
+          branch: sync/upstream                # 刚才推到远端的分支
+          base: main                           # 如果你的默认分支不是 main，就改这里
           title: "chore: sync with upstream"
           body: "Automated sync from upstream."
-          delete-branch: true                  # 合并后删临时分支
+          delete-branch: true
