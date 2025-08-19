@@ -1,9 +1,9 @@
 name: Upstream Sync (PR)
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: "0 3 * * *"   # 每天 03:00 运行；想先取消定时可先注释掉本行
-  workflow_dispatch:       # 允许手动触发
+    - cron: "0 3 * * *"
 
 permissions:
   contents: write
@@ -13,22 +13,51 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fetch upstream
+      - name: Diagnostics
         run: |
+          set -euxo pipefail
+          git --version
+          echo "Actor: $GITHUB_ACTOR"
+          git remote -v
+          git branch -av
+
+      - name: Fetch upstream (idempotent)
+        run: |
+          set -euxo pipefail
+          git remote remove upstream || true
           git remote add upstream https://github.com/samqin123/MoonTV.git
-          git fetch upstream
-          git checkout -B upstream-sync
-          git reset --hard upstream/main   # 如果上游默认分支是 master 就改成 upstream/master
+          git fetch upstream --prune
+
+          # 自动判断 upstream 默认分支（main/master）
+          if git show-ref --verify --quiet refs/remotes/upstream/main; then
+            UPBR=main
+          elif git show-ref --verify --quiet refs/remotes/upstream/master; then
+            UPBR=master
+          else
+            echo "ERROR: upstream has neither main nor master"; exit 1
+          fi
+          echo "Using upstream branch: $UPBR"
+
+          git checkout -B sync/upstream
+          git reset --hard "upstream/$UPBR"
+          git log --oneline -n 3
 
       - name: Open PR to main
         uses: peter-evans/create-pull-request@v6
         with:
-          branch: upstream-sync
-          base: main           # 你的默认分支不是 main 就改掉
+          token: ${{ secrets.GITHUB_TOKEN }}   # 显式使用写权限 token
+          branch: sync/upstream                # 避免和保护规则冲突
+          base: main                           # 如果你的默认分支不是 main 就改这里
           title: "chore: sync with upstream"
           body: "Automated sync from upstream."
           labels: sync
+          signoff: true                        # 兼容 DCO（有 Signed-off-by）
+          committer: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+          delete-branch: true
+          debug-logs: true
